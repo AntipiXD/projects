@@ -110,75 +110,76 @@ GROUP BY
 -- 5. Top 5 performing areas (Rental value) 
 -- 6. Top 5 performing areas (Cap Gain)
 
--- Chart 1
--- Top 5 performing areas (Sales volume) - Bar graph
+-- CHART 2
+-- Top performing areas, market share (Sales Volume) - Pie chart
+
+-- Query
 with area_stats_by_filter as (
-select
-	year,
-	area_id,
-	SUM(volume) as total_volume,
-	row_number() over (
-order by
-	SUM(volume) desc
-            ) as rn
-from
-	area_volume_value_group
--- where
--- Filters:
-    -- year -- user chooses year
-	-- and property_type (All (By default), Residential, Commercial)
-	-- bed (Any Bed (default), 1, 2, 3, 4, 5, 6, 7, 7+, Studio)
-	-- market (All (All by default), Primary, Secondary)
-group by
-	year,
-	area_id
-),
-top_five_by_filter as (
-select
-	area_id
-from
-	area_stats_by_filter
-where
-	rn < 6
-),
-top_five_prev_year_data as (
-select
-	year,
-	area_id,
-	SUM(volume) as total_volume
-from
-	area_volume_value_group avvby
-where
-	exists (
-	select
-		1
-	from
-		top_five_by_filter tfbf
-	where
-		tfbf.area_id = avvby.area_id
-    )
+ select
+  area_id,
+  SUM(volume) as total_volume,
+  row_number() over (
+   order by
+       SUM(volume) desc
+      ) as rn
+ from area_volume_value_group 
+ -- where 
 	--Filters:
-	-- and "year" = 2024 -- this year is previous year from the selected year above
+  	-- year -- user chooses year
 	-- and property_type (All (By default), Residential, Commercial)
 	-- bed (Any Bed (default), 1, 2, 3, 4, 5, 6, 7, 7+, Studio)
 	-- market (All (All by default), Primary, Secondary)
-group by
-	year,
-	area_id
+ group by area_id
+),
+area_stats_with_share as (
+ select 
+  area_id,
+  total_volume,
+  rn,
+  ROUND(
+      total_volume::numeric * 100.0 / SUM(total_volume) OVER (),
+      10
+   ) AS share_pct
+ from area_stats_by_filter
+),
+top_seven_area as (
+select 
+ area_id,
+ total_volume,
+ share_pct
+from 
+ area_stats_with_share
+where 
+ rn < 8),
+remaining as (
+select
+ -1 area_id,
+    sum(a.total_volume)
+      - coalesce((select sum(total_volume) from top_seven_area), 0)
+      as total_volume,
+    sum(a.share_pct)
+      - coalesce((select sum(share_pct)   from top_seven_area), 0)
+      as share_pct
+from area_stats_with_share a
 )
 select
-	*
-from
-	top_five_prev_year_data
+ area_id, -- here '-1' is 'Others' in the pie chart
+ total_volume,
+ share_pct
+from 
+ top_seven_area
 union
-select
-	year,
-	area_id,
-	total_volume
-from
-	area_stats_by_filter
-where
-	rn < 6;
+select 
+ area_id,
+ total_volume,
+ share_pct
+from 
+ remaining;
+
+
+
+
+
 
 -- Filters
 -- 1) Year - user chooses year (Current year - by default)
